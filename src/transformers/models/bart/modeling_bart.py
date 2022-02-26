@@ -125,10 +125,13 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
 
 class GeneralizedPooling(nn.Module):
     def __init__(self):
-        pass
+        self.conv1d_layer = nn.Conv1d(in_channels=512, out_channels=512, kernel_size=10, stride=10, padding=0)
 
     def forward(self,event_encoder_embeddings):
-        pass 
+        event_encoder_embeddings = event_encoder_embeddings.transpose(1,2).contiguous()
+        conv_outputs = self.conv1d_layer(event_encoder_embeddings)
+        conv_outputs = conv_outputs.transpose(1,2).contiguous()
+        return conv_outputs
 
 class BartAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -384,12 +387,13 @@ class BartDecoderLayer(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
+        event_hidden_states: Optional[torch.Tensor] = None,
+        encoder_event_attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         cross_attn_layer_head_mask: Optional[torch.Tensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = True,
-        event_embeddings: torch.Tensor = None
     ):
         """
         Args:
@@ -431,7 +435,7 @@ class BartDecoderLayer(nn.Module):
         if encoder_hidden_states is not None:
             residual = hidden_states
             # cross_attn cached key/values tuple is at positions 3,4 of present_key_value tuple
-            cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
+            cross_attn_past_key_value = past_key_value[3:5] if past_key_value is not None else None
             hidden_states, cross_attn_weights, cross_attn_present_key_value = self.encoder_attn(
                 hidden_states=hidden_states,
                 key_value_states=encoder_hidden_states,
@@ -447,6 +451,21 @@ class BartDecoderLayer(nn.Module):
             # add cross-attn to positions 3,4 of present_key_value tuple
             present_key_value = present_key_value + cross_attn_present_key_value
 
+            residual = hidden_states
+            event_cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
+            hidden_states, event_cross_attn_weights, cross_attn_present_key_value = self.event_attention(
+                hidden_states=hidden_states,
+                key_value_states=event_hidden_states,
+                attention_mask=encoder_event_attention_mask,
+                layer_head_mask=cross_attn_layer_head_mask,
+                past_key_value=event_cross_attn_past_key_value,
+                output_attentions=output_attentions,
+            )
+            hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+            hidden_states = residual + hidden_states
+            hidden_states = self.event_attn_layer_norm(hidden_states)
+
+            present_key_value = present_key_value + cross_attn_present_key_value
         # if event_embeddings is not None:
         #     residual = hidden_states
 
@@ -462,7 +481,7 @@ class BartDecoderLayer(nn.Module):
         outputs = (hidden_states,)
 
         if output_attentions:
-            outputs += (self_attn_weights, cross_attn_weights)
+            outputs += (self_attn_weights, cross_attn_weights, event_cross_attn_weights)
 
         if use_cache:
             outputs += (present_key_value,)
@@ -919,6 +938,7 @@ class BartDecoder(BartPretrainedModel):
         attention_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        encoder_event_attention_mask = None,
         head_mask=None,
         cross_attn_head_mask=None,
         past_key_values=None,
@@ -927,7 +947,7 @@ class BartDecoder(BartPretrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
-        event_embeddings=None,
+        event_hidden_states=None,
     ):
         r"""
         Args:
@@ -1026,6 +1046,8 @@ class BartDecoder(BartPretrainedModel):
         if encoder_hidden_states is not None and encoder_attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
             encoder_attention_mask = _expand_mask(encoder_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1])
+            encoder_event_attention_mask = _expand_mask(encoder_event_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1])
+            ####
 
         # embed positions
         positions = self.embed_positions(input_shape, past_key_values_length)
@@ -1080,18 +1102,20 @@ class BartDecoder(BartPretrainedModel):
                     attention_mask,
                     encoder_hidden_states,
                     encoder_attention_mask,
+                    event_hidden_states,
+                    encoder_event_attention_mask,
                     head_mask[idx] if head_mask is not None else None,
                     cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
-                    None,
-                    event_embeddings,
+                    None
                 )
             else:
-
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=attention_mask,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
+                    event_hidden_states=event_hidden_states,
+                    encoder_event_attention_mask = encoder_event_attention_mask,
                     layer_head_mask=(head_mask[idx] if head_mask is not None else None),
                     cross_attn_layer_head_mask=(
                         cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None
@@ -1099,18 +1123,17 @@ class BartDecoder(BartPretrainedModel):
                     past_key_value=past_key_value,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
-                    event_embeddings=event_embeddings,
                 )
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[3 if output_attentions else 1],)
+                next_decoder_cache += (layer_outputs[4 if output_attentions else 1],)
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
                 if encoder_hidden_states is not None:
-                    all_cross_attentions += (layer_outputs[2],)
+                    all_cross_attentions += (layer_outputs[2],layer_outputs[3])
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -1229,18 +1252,21 @@ class BartModel(BartPretrainedModel):
             )
         
         # Split encoder outputs 
+        event_attention_mask = attention_mask[:,:40]
         event_encoder_embeddings = encoder_outputs.last_hidden_state[:,:40,:] 
+        
+        text_attention_mask = attention_mask[:,40:]
         text_encoder_embeddings = encoder_outputs.last_hidden_state[:,40:,:]
         
         event_generalized_embeddings = self.generalized_pooling(event_encoder_embeddings)
-        encoder_attention_mask = attention_mask[:,40:]
-
+    
         # decoder outputs consists of (dec_features, past_key_value, dec_hidden, dec_attn)
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
             attention_mask=decoder_attention_mask,
             encoder_hidden_states=text_encoder_embeddings,
-            encoder_attention_mask=encoder_attention_mask,
+            encoder_event_attention_mask = event_attention_mask,
+            encoder_attention_mask=text_attention_mask,
             head_mask=decoder_head_mask,
             cross_attn_head_mask=cross_attn_head_mask,
             past_key_values=past_key_values,
@@ -1249,7 +1275,7 @@ class BartModel(BartPretrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            event_embeddings = event_generalized_embeddings
+            event_hidden_states = event_generalized_embeddings
         )
 
         if not return_dict:
