@@ -1193,7 +1193,7 @@ class BartModel(BartPretrainedModel):
         output_type=Seq2SeqModelOutput,
         config_class=_CONFIG_FOR_DOC,
     )
-    def  (
+    def forward(
         self,
         input_ids=None,
         attention_mask=None,
