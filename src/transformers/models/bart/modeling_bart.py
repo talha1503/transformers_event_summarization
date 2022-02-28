@@ -125,7 +125,7 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
 
 class GeneralizedPooling(nn.Module):
     def __init__(self):
-        self.conv1d_layer = nn.Conv1d(in_channels=512, out_channels=512, kernel_size=10, stride=10, padding=0)
+        self.conv1d_layer = nn.Conv1d(in_channels=768, out_channels=768, kernel_size=10, stride=10, padding=0)
 
     def forward(self,event_encoder_embeddings):
         event_encoder_embeddings = event_encoder_embeddings.transpose(1,2).contiguous()
@@ -1168,7 +1168,7 @@ class BartModel(BartPretrainedModel):
 
         self.encoder = BartEncoder(config, self.shared)
         self.decoder = BartDecoder(config, self.shared)
-        self.generalized_pooling = GeneralizedPooling(config)
+        self.generalized_pooling = GeneralizedPooling()
         # Initialize weights and apply final processing
         self.post_init()
 
