@@ -495,7 +495,7 @@ def main():
 
         inputs = [prefix + inp for inp in inputs]
         model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
-        print(model_inputs)
+        
 
         for index, sample in enumerate(examples[events_column]):
             tokenized_span = tokenize_events(examples[events_column][index], data_args.number_of_events, data_args.event_max_length)
