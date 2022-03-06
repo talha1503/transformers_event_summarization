@@ -258,8 +258,6 @@ class BartAttention(nn.Module):
             attn_weights_reshaped = None
 
         attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-        print("Attention probs size: ", attn_probs.size())
-        print("value_states size: ", value_states.size())
         attn_output = torch.bmm(attn_probs, value_states)
 
         if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
