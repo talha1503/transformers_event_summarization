@@ -465,7 +465,7 @@ class BartDecoderLayer(nn.Module):
             hidden_states = residual + hidden_states
             hidden_states = self.event_attn_layer_norm(hidden_states)
 
-            present_key_value = present_key_value + event_cross_attn_past_key_value
+            present_key_value = present_key_value + cross_attn_present_key_value
         # if event_embeddings is not None:
         #     residual = hidden_states
 
