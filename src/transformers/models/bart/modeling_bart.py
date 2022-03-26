@@ -1391,8 +1391,7 @@ class BartForConditionalGeneration(BartPretrainedModel):
             return_dict=return_dict,
         )
         lm_logits = self.lm_head(outputs[0]) + self.final_logits_bias
-        print(lm_logits)
-        print("-"*40)
+        
         masked_lm_loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()
