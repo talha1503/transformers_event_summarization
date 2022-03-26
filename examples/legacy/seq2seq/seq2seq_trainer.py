@@ -168,11 +168,13 @@ class Seq2SeqTrainer(Trainer):
             else:
                 # compute usual loss via models
                 loss, logits = model(**inputs, labels=labels, use_cache=False)[:2]
+                print(logits)
         else:
             # compute label smoothed loss
             logits = model(**inputs, use_cache=False)[0]
             lprobs = torch.nn.functional.log_softmax(logits, dim=-1)
             loss, _ = self.loss_fn(lprobs, labels, self.args.label_smoothing, ignore_index=self.config.pad_token_id)
+            print(logits)
         return loss, logits
 
     def compute_loss(self, model, inputs):
