@@ -492,13 +492,13 @@ def main():
             if examples[text_column][i] is not None and examples[summary_column][i] is not None and examples[events_column][i] is not None: 
                 inputs.append(examples[text_column][i])
                 targets.append(examples[summary_column][i])
+                events.append(examples[events_column][i])
 
         inputs = [prefix + inp for inp in inputs]
         model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
         
-
-        for index, sample in enumerate(examples[events_column]):
-            tokenized_span = tokenize_events(examples[events_column][index], data_args.number_of_events, data_args.event_max_length)
+        for index, sample in enumerate(events):
+            tokenized_span = tokenize_events(events[index], data_args.number_of_events, data_args.event_max_length)
 
             tokenized_span['input_ids'].extend(model_inputs['input_ids'][index])
             model_inputs['input_ids'][index] = tokenized_span['input_ids']
