@@ -21,6 +21,7 @@ Fine-tuning the library models for sequence to sequence.
 import logging
 import os
 import sys
+import ast
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -461,6 +462,7 @@ def main():
         )
     
     def tokenize_events(event_list, number_of_events, event_max_length):
+        event_list = ast.literal_eval(event_list)
         tokenized_event_list = []
         event_list = event_list[:number_of_events] 
         for index,event in enumerate(event_list):
